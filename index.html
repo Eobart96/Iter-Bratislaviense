@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iter Bratislaviense - Визуальная RPG</title>
+    <style>
+        :root {
+            --bg-color: #2c3e50;
+            --ui-bg: #ecf0f1;
+            --ui-border: #34495e;
+            --accent: #e74c3c;
+            --success: #27ae60;
+            --text: #2c3e50;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            color: var(--text);
+        }
+
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        /* Игровой мир */
+        #world {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #7bed9f; /* Трава по умолчанию */
+            transition: background-color 1s ease;
+            z-index: 1;
+        }
+
+        /* Сущности */
+        .entity {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            color: white;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+
+        #player {
+            background-color: #3498db;
+            border: 2px solid #2980b9;
+            z-index: 20;
+        }
+
+        .npc {
+            background-color: #f39c12;
+            border: 2px solid #d35400;
+        }
+
+        .location-marker {
+            position: absolute;
+            font-size: 12px;
+            color: rgba(0,0,0,0.5);
+            text-transform: uppercase;
+            font-weight: bold;
+            pointer-events: none;
+        }
+
+        /* Интерфейс */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 100;
+            pointer-events: none; /* Пропускать клики сквозь пустые места */
+        }
+
+        .hud-panel {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px;
+            border-radius: 8px;
+            border: 2px solid var(--ui-border);
+            pointer-events: auto;
+        }
+
+        #stats-bar {
+            top: 10px;
+            left: 10px;
+            width: 200px;
+        }
+
+        #inventory-bar {
+            bottom: 10px;
+            left: 10px;
+            max-width: 300px;
+            max-height: 100px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+
+        #quest-log {
+            top: 10px;
+            right: 10px;
+            width: 250px;
+            font-size: 14px;
+        }
+
+        /* Модальное окно диалога */
+        #dialog-modal {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            background: var(--ui-bg);
+            border: 4px solid var(--ui-border);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            pointer-events: auto;
+            text-align: center;
+        }
+
+        #dialog-text {
+            font-size: 18px;
+            margin-bottom: 20px;
+            min-height: 60px;
+        }
+
+        input[type="text"] {
+            width: 80%;
+            padding: 10px;
+            font-size: 16px;
+            border: 2px solid var(--ui-border);
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: var(--success);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background-color: #219150;
+        }
+
+        button.close-btn {
+            background-color: var(--accent);
+            margin-top: 10px;
+        }
+
+        /* Анимации */
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+            100% { transform: translateY(0px); }
+        }
+
+        .floating-text {
+            position: absolute;
+            font-weight: bold;
+            animation: floatUp 1.5s ease-out forwards;
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-30px); }
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        
+        .bar-container {
+            width: 100%;
+            height: 10px;
+            background: #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-top: 2px;
+        }
+        
+        .bar-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        
+        #xp-bar { background: #f1c40f; }
+        #energy-bar { background: #e74c3c; }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- Игровой мир -->
+    <div id="world">
+        <!-- Локации и объекты будут добавлены через JS -->
+    </div>
+
+    <!-- Интерфейс -->
+    <div id="ui-layer">
+        <div id="stats-bar" class="hud-panel">
+            <div class="stat-row"><span>Уровень:</span> <strong id="lvl-val">1</strong></div>
+            <div class="stat-row"><span>XP:</span> <span id="xp-val">0</span></div>
+            <div class="bar-container"><div id="xp-bar" class="bar-fill" style="width: 0%"></div></div>
+            
+            <div class="stat-row" style="margin-top: 10px;"><span>Энергия:</span> <span id="energy-val">100</span></div>
+            <div class="bar-container"><div id="energy-bar" class="bar-fill" style="width: 100%"></div></div>
+            
+            <div style="margin-top: 10px; font-size: 12px; color: #7f8c8d;">
+                Управление: Стрелки / WASD
+            </div>
+        </div>
+
+        <div id="quest-log" class="hud-panel">
+            <strong>Текущее задание:</strong>
+            <p id="quest-desc">Исследуйте Старый город и найдите первого жителя.</p>
+        </div>
+
+        <div id="inventory-bar" class="hud-panel">
+            <strong>Выученные слова:</strong>
+            <ul id="word-list" style="padding-left: 20px; margin: 5px 0;"></ul>
+        </div>
+
+        <!-- Диалоговое окно -->
+        <div id="dialog-modal">
+            <h3 id="npc-name">NPC Name</h3>
+            <div id="dialog-text">Привет! Переведи слово 'Дом' на словацкий.</div>
+            <input type="text" id="answer-input" placeholder="Ваш ответ..." autocomplete="off">
+            <br>
+            <button id="submit-answer">Ответить</button>
+            <br>
+            <button class="close-btn" id="close-dialog">Закрыть</button>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * Iter Bratislaviense - Visual RPG Engine
+ * Pure JavaScript Implementation
+ */
+
+// --- КОНФИГУРАЦИЯ И ДАННЫЕ ---
+
+const WORD_DATABASE = {
+    "дом": { sk: "dom", hint: "Звучит почти так же" },
+    "вода": { sk: "voda", hint: "Похоже на русское" },
+    "лес": { sk: "les", hint: "Короткое слово" },
+    "друг": { sk: "priateľ", hint: "Начинается на P" },
+    "кошка": { sk: "mačka", hint: "Животное" },
+    "солнце": { sk: "slnko", hint: "Светит в небе" },
+    "хлеб": { sk: "chlieb", hint: "Еда" },
+    "город": { sk: "mesto", hint: "Где мы находимся" },
+    "река": { sk: "rieka", hint: "Течет вода" },
+    "гора": { sk: "vrch", hint: "Высоко" },
+    "привет": { sk: "ahoj", hint: "Приветствие" },
+    "спасибо": { sk: "ďakujem", hint: "Благодарность" },
+    "пока": { sk: "dovidenia", hint: "Прощание" },
+    "да": { sk: "áno", hint: "Согласие" },
+    "нет": { sk: "nie", hint: "Отрицание" }
+};
+
+const LOCATIONS_DATA = [
+    { id: "castle", name: "Братиславский Град", x: 400, y: 100, color: "#95a5a6", desc: "Величественный замок над городом." },
+    { id: "old_town", name: "Старый Город", x: 400, y: 300, color: "#e67e22", desc: "Сердце Братиславы, узкие улочки." },
+    { id: "bridge", name: "Мост SNP", x: 200, y: 400, color: "#34495e", desc: "Мост через Дунай с НЛО на вершине." },
+    { id: "embankment", name: "Набережная Дуная", x: 600, y: 500, color: "#3498db", desc: "Спокойная прогулка у воды." }
+];
+
+const QUESTS_DATA = [
+    { id: 1, triggerLoc: "old_town", wordRu: "привет", task: "Поздоровайтесь с местным жителем (переведите 'Привет')", rewardXp: 50 },
+    { id: 2, triggerLoc: "castle", wordRu: "гора", task: "Поднимаясь к замку, переведите слово 'Гора'", rewardXp: 70 },
+    { id: 3, triggerLoc: "bridge", wordRu: "вода", task: "Смотря на реку, переведите 'Вода'", rewardXp: 60 },
+    { id: 4, triggerLoc: "embankment", wordRu: "друг", task: "Встретили туриста? Переведите 'Друг'", rewardXp: 80 }
+];
+
+// --- КЛАССЫ ---
+
+class WordDatabase {
+    getWord(ruWord) {
+        const key = ruWord.toLowerCase().trim();
+        return WORD_DATABASE[key] || null;
+    }
+    
+    getAllKeys() {
+        return Object.keys(WORD_DATABASE);
+    }
+}
+
+class Player {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.speed = 5;
+        this.level = 1;
+        this.xp = 0;
+        this.xpToNextLevel = 100;
+        this.energy = 100;
+        this.maxEnergy = 100;
+        this.inventory = []; // Выученные слова
+        this.element = document.createElement('div');
+        this.element.id = 'player';
+        this.element.className = 'entity';
+        this.element.textContent = 'Я';
+        document.getElementById('world').appendChild(this.element);
+        this.updatePosition();
+    }
+
+    updatePosition() {
+        this.element.style.left = `${this.x}px`;
+        this.element.style.top = `${this.y}px`;
+    }
+
+    move(dx, dy) {
+        const newX = this.x + dx * this.speed;
+        const newY = this.y + dy * this.speed;
+
+        // Границы мира (800x600)
+        if (newX >= 0 && newX <= 760 && newY >= 0 && newY <= 560) {
+            this.x = newX;
+            this.y = newY;
+            this.updatePosition();
+            return true;
+        }
+        return false;
+    }
+
+    addXp(amount) {
+        this.xp += amount;
+        if (this.xp >= this.xpToNextLevel) {
+            this.level++;
+            this.xp -= this.xpToNextLevel;
+            this.xpToNextLevel = Math.floor(this.xpToNextLevel * 1.5);
+            GameEngine.showFloatingText(this.x, this.y, `УРОВЕНЬ ${this.level}!`, '#f1c40f');
+        }
+        UIManager.updateStats();
+    }
+
+    loseEnergy(amount) {
+        this.energy = Math.max(0, this.energy - amount);
+        UIManager.updateStats();
+        if (this.energy === 0) {
+            alert("Вы устали! Игра окончена. (Перезагрузите страницу для рестарта)");
+            location.reload();
+        }
+    }
+
+    learnWord(wordRu) {
+        if (!this.inventory.includes(wordRu)) {
+            this.inventory.push(wordRu);
+            UIManager.updateInventory();
+            return true;
+        }
+        return false;
+    }
+}
+
+class NPC {
+    constructor(name, x, y, questId) {
+        this.name = name;
+        this.x = x;
+        this.y = y;
+        this.questId = questId;
+        this.questData = QUESTS_DATA.find(q => q.id === questId);
+        this.completed = false;
+        
+        this.element = document.createElement('div');
+        this.element.className = 'entity npc';
+        this.element.textContent = '?';
+        this.element.title = name;
+        document.getElementById('world').appendChild(this.element);
+        this.updatePosition();
+    }
+
+    updatePosition() {
+        this.element.style.left = `${this.x}px`;
+        this.element.style.top = `${this.y}px`;
+    }
+
+    interact() {
+        if (this.completed) {
+            return "Спасибо еще раз! Удачи в изучении языка.";
+        }
+        return this.questData.task;
+    }
+
+    complete() {
+        this.completed = true;
+        this.element.textContent = '✓';
+        this.element.style.backgroundColor = '#27ae60';
+    }
+}
+
+class GameEngine {
+    static instance = null;
+    
+    constructor() {
+        if (GameEngine.instance) return GameEngine.instance;
+        GameEngine.instance = this;
+
+        this.player = new Player(400, 300); // Старт в старом городе
+        this.npcs = [];
+        this.locations = [];
+        this.wordDb = new WordDatabase();
+        this.activeQuest = null;
+        this.isDialogOpen = false;
+        
+        this.initWorld();
+        this.setupInput();
+        this.gameLoop = this.gameLoop.bind(this);
+        requestAnimationFrame(this.gameLoop);
+        
+        UIManager.updateStats();
+        UIManager.setQuest("Найдите желтый маркер (?) в Старом городе.");
+    }
+
+    initWorld() {
+        const worldEl = document.getElementById('world');
+        
+        // Создаем визуальные зоны локаций
+        LOCATIONS_DATA.forEach(loc => {
+            const marker = document.createElement('div');
+            marker.className = 'location-marker';
+            marker.style.left = `${loc.x}px`;
+            marker.style.top = `${loc.y - 30}px`;
+            marker.textContent = loc.name;
+            worldEl.appendChild(marker);
+            
+            // Меняем фон зоны (упрощенно - круги)
+            const zone = document.createElement('div');
+            zone.style.position = 'absolute';
+            zone.style.left = `${loc.x - 100}px`;
+            zone.style.top = `${loc.y - 100}px`;
+            zone.style.width = '200px';
+            zone.style.height = '200px';
+            zone.style.borderRadius = '50%';
+            zone.style.backgroundColor = loc.color;
+            zone.style.opacity = '0.2';
+            zone.style.zIndex = '0';
+            worldEl.appendChild(zone);
+
+            this.locations.push({ ...loc, zoneEl: zone });
+        });
+
+        // Создаем NPC
+        this.npcs.push(new NPC("Турист", 420, 320, 1));
+        this.npcs.push(new NPC("Страж замка", 400, 120, 2));
+        this.npcs.push(new NPC("Рыбак", 220, 420, 3));
+        this.npcs.push(new NPC("Прогуливающийся", 620, 520, 4));
+    }
+
+    setupInput() {
+        window.addEventListener('keydown', (e) => {
+            if (this.isDialogOpen) return;
+
+            switch(e.key) {
+                case 'ArrowUp': case 'w': case 'W': this.player.move(0, -1); break;
+                case 'ArrowDown': case 's': case 'S': this.player.move(0, 1); break;
+                case 'ArrowLeft': case 'a': case 'A': this.player.move(-1, 0); break;
+                case 'ArrowRight': case 'd': case 'D': this.player.move(1, 0); break;
+                case ' ': case 'Enter': this.checkInteraction(); break;
+            }
+            this.checkLocationChange();
+        });
+
+        // Обработка диалога
+        document.getElementById('submit-answer').addEventListener('click', () => this.handleAnswer());
+        document.getElementById('answer-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.handleAnswer();
+        });
+        document.getElementById('close-dialog').addEventListener('click', () => UIManager.closeDialog());
+    }
+
+    checkLocationChange() {
+        // Простая логика смены фона в зависимости от близости к центру локации
+        let closestLoc = null;
+        let minDist = 200;
+
+        this.locations.forEach(loc => {
+            const dist = Math.hypot(this.player.x - loc.x, this.player.y - loc.y);
+            if (dist < minDist) {
+                minDist = dist;
+                closestLoc = loc;
+            }
+        });
+
+        if (closestLoc) {
+            document.getElementById('world').style.backgroundColor = closestLoc.color;
+            // Обновляем описание квеста если нужно, но пока просто статично
+        } else {
+            document.getElementById('world').style.backgroundColor = '#7bed9f';
+        }
+    }
+
+    checkInteraction() {
+        let nearNpc = null;
+        this.npcs.forEach(npc => {
+            const dist = Math.hypot(this.player.x - npc.x, this.player.y - npc.y);
+            if (dist < 50) {
+                nearNpc = npc;
+            }
+        });
+
+        if (nearNpc) {
+            this.openDialog(nearNpc);
+        }
+    }
+
+    openDialog(npc) {
+        this.isDialogOpen = true;
+        this.activeNpc = npc;
+        UIManager.openDialog(npc.name, npc.interact());
+        document.getElementById('answer-input').value = '';
+        document.getElementById('answer-input').focus();
+    }
+
+    handleAnswer() {
+        const input = document.getElementById('answer-input');
+        const playerAnswer = input.value.trim().toLowerCase();
+        
+        if (!this.activeNpc || !this.activeNpc.questData) return;
+
+        const targetWordRu = this.activeNpc.questData.wordRu;
+        const correctSk = this.wordDb.getWord(targetWordRu)?.sk;
+
+        if (correctSk && playerAnswer === correctSk) {
+            // Успех
+            const xpReward = this.activeNpc.questData.rewardXp;
+            this.player.addXp(xpReward);
+            this.player.learnWord(targetWordRu);
+            this.activeNpc.complete();
+            
+            GameEngine.showFloatingText(this.player.x, this.player.y, `+${xpReward} XP`, '#27ae60');
+            UIManager.showMessage("Правильно! Вы выучили новое слово.", true);
+            setTimeout(() => UIManager.closeDialog(), 1500);
+            
+            // Обновляем глобальный квест
+            const nextQuest = QUESTS_DATA.find(q => q.id === this.activeNpc.questData.id + 1);
+            if (nextQuest) {
+                UIManager.setQuest(`Следующая цель: ${nextQuest.triggerLoc}. Найдите там NPC.`);
+            } else {
+                UIManager.setQuest("Поздравляем! Вы прошли демо-версию!");
+            }
+
+        } else {
+            // Ошибка
+            this.player.loseEnergy(20);
+            GameEngine.showFloatingText(this.player.x, this.player.y, "-20 Энергии", '#e74c3c');
+            input.value = '';
+            input.placeholder = "Ошибка! Попробуйте еще раз...";
+        }
+    }
+
+    static showFloatingText(x, y, text, color) {
+        const el = document.createElement('div');
+        el.className = 'floating-text';
+        el.textContent = text;
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        el.style.color = color;
+        document.getElementById('world').appendChild(el);
+        setTimeout(() => el.remove(), 1500);
+    }
+
+    gameLoop() {
+        // Здесь можно добавить анимацию движения NPC или частицы
+        requestAnimationFrame(this.gameLoop);
+    }
+}
+
+class UIManager {
+    static updateStats() {
+        const p = GameEngine.instance.player;
+        document.getElementById('lvl-val').textContent = p.level;
+        document.getElementById('xp-val').textContent = `${p.xp} / ${p.xpToNextLevel}`;
+        document.getElementById('energy-val').textContent = p.energy;
+        
+        const xpPercent = (p.xp / p.xpToNextLevel) * 100;
+        document.getElementById('xp-bar').style.width = `${xpPercent}%`;
+        
+        const energyPercent = (p.energy / p.maxEnergy) * 100;
+        document.getElementById('energy-bar').style.width = `${energyPercent}%`;
+    }
+
+    static updateInventory() {
+        const list = document.getElementById('word-list');
+        list.innerHTML = '';
+        GameEngine.instance.player.inventory.forEach(word => {
+            const li = document.createElement('li');
+            const skWord = GameEngine.instance.wordDb.getWord(word).sk;
+            li.textContent = `${word} → ${skWord}`;
+            list.appendChild(li);
+        });
+    }
+
+    static setQuest(text) {
+        document.getElementById('quest-desc').textContent = text;
+    }
+
+    static openDialog(name, text) {
+        document.getElementById('npc-name').textContent = name;
+        document.getElementById('dialog-text').textContent = text;
+        document.getElementById('dialog-modal').style.display = 'block';
+    }
+
+    static closeDialog() {
+        document.getElementById('dialog-modal').style.display = 'none';
+        GameEngine.instance.isDialogOpen = false;
+        GameEngine.instance.activeNpc = null;
+    }
+    
+    static showMessage(text, isSuccess) {
+        // Можно добавить всплывающее уведомление, пока просто в консоль или алерт если критично
+        console.log(text);
+    }
+}
+
+// Запуск игры при загрузке
+window.onload = () => {
+    new GameEngine();
+};
+
+</script>
+</body>
+</html>
